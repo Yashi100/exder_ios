@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>パスワードの再設定</title>
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no;" />
+		<meta charset="utf-8">
+
+		<!-- iPad/iPhone specific css below, add after your main css >
+		<link rel="stylesheet" media="only screen and (max-device-width: 1024px)" href="ipad.css" type="text/css" />
+		<link rel="stylesheet" media="only screen and (max-device-width: 480px)" href="iphone.css" type="text/css" />
+		-->
+
+		<link rel="stylesheet" href="js/jquery.mobile-1.2.0.min.css" type="text/css" />
+		<link rel="stylesheet" href="css/iphone.css" type="text/css" />
+		<link rel="stylesheet" href="css/validate.css" type="text/css" />
+
+		<script type="text/javascript" charset="utf-8" src="js/jquery-1.8.2.min.js"></script>
+		<script type="text/javascript" charset="utf-8" src="js/base64.js"></script>
+		<script type="text/javascript" charset="utf-8" src="js/aes.js"></script>
+		<script type="text/javascript" charset="utf-8" src="js/cordova.js"></script>
+		<script type="text/javascript" charset="utf-8" src="js/main.js"></script>
+		<script type="text/javascript" charset="utf-8" src="js/jquery.activity-indicator-1.0.0.js"></script>
+
+		<script type="text/javascript">
+			$(document).bind("mobileinit", function() {
+				// jQuery Mobile フレームワークの設定変更は、ここで行なってください！
+				$.support.cors = true;
+				$.mobile.allowCrossDomainPages = true;
+			});
+
+			$(document).ready(function() {
+				document.addEventListener("deviceready", onDeviceReady, false);
+			});
+
+			function onDeviceReady() {
+				$('#loading').css('display', 'none');
+				$('#content').css('display', 'block');
+
+				if (location.search.length > 1) {
+					var get = new Object();
+					var ret = location.search.substr(1).split("&");
+					for (var i = 0; i < ret.length; i++) {
+						var r = ret[i].split("=");
+						get[r[0]] = r[1];
+					}
+					console.log("get:" + get['kbn']);
+				}
+				
+				$.ajaxSetup({
+					timeout : 5000
+				});
+				
+				// 設定ファイルの読み込み
+				getonOrdering(onReadyFile);
+			}
+
+			function onReadyFile(json) {
+				console.log("正常にテキストを読み込みました。:cid " + json.customer_id);
+				console.log("正常にテキストを読み込みました。:key " + json.customer_key);
+				console.log("正常にテキストを読み込みました。:pas " + json.customer_pass);
+
+				$("#customer_id").val(json.customer_id);
+				$("#customer_key").val(json.customer_key);
+				$("#customer_email_1").val(json.customer_email_1);
+				$("#customer_passT").val(json.customer_pass);
+				$("#customer_ansT").val(json.customer_ans);
+
+				$("#iv").val(json.iv);
+
+				$("#app_ver").val(json.app_ver);
+				$("#app_code").val(json.app_code);
+				$("#url").val(json.url);
+				$("#http").val(json.http);
+				$("#https").val(json.https);
+			}
+
+			function checkValidate() {
+				var i = 0;
+				//エラーの初期化
+				$("p.error").parent().removeClass("error");
+				$("p.error").remove();
+				//暗証番号のチェック
+				if ($("#old_pass").val() == "" || !$("#old_pass").val().match(/^[0-9]+$/)) {
+					$("#old_pass").parent().append("<p class='error'>現在の暗証番号を入力してください</p>");
+				}
+				//暗証番号のチェック
+				if ($("#customer_pass").val() == "" || !$("#customer_pass").val().match(/^[0-9]{4,16}/)) {
+					$("#customer_pass").parent().append("<p class='error'>新しい暗証番号を半角数字４〜16桁で入力してください</p>");
+				}
+				//再入力番号のチェック
+				if ($("#re_pass").val() != $("#customer_pass").val() || $("#re_pass").val() == "") {
+					$("#re_pass").parent().append("<p class='error'>新しい暗証番号と同じ番号を入力してください</p>");
+				}
+
+				//後処理
+				if ($("p.error").size() > 0) {
+					$("p.error").parent().addClass("error");
+					errorFocus($("p.error:first"));
+					return false;
+				} else {
+					savePass();
+				}
+			}
+
+			// 更新
+			function savePass() {
+				//loading呼び出し
+				$('#content').css('display', 'none');
+				$('#loading').css('display', 'block');
+				
+				// 暗証番号あり・なしフラグのセット
+				var inputPasscode = 'true';
+				var passFlip = $('#passFlip').val();
+				if(passFlip == 'false'){
+					inputPasscode = 'false';
+				}
+				getFile('initFlg', okGetFnc, ngGetFnc);
+				function okGetFnc(json){
+					var inputedPass = json.inputedPass
+					initFlg = {
+						inputPasscode: inputPasscode,
+						inputedPass: inputedPass
+					}
+					setFile('initFlg', initFlg, okSetFnc, okSetFnc);
+					function okSetFnc(){
+						// 設定ファイルの読み込み
+						getonOrdering(savePass2);
+					}
+				}
+				function ngGetFnc(){
+					// 設定ファイルの読み込み
+					getonOrdering(savePass2);
+				}
+			}
+
+			function savePass2(ordering) {
+
+				//alert('customer_passT: ' + $("#customer_passT").val());
+				//alert('old_pass: ' + $("#old_pass").val());
+
+				var passT = $("#customer_passT").val();
+				var pass = $("#old_pass").val();
+
+				if (passT == pass) {
+					console.log("OK customer_key: " + ordering['customer_key']);
+
+					// 送信
+					var url = ordering.https + 'json/receive_pass.php';
+					var params = ordering;
+					params['old_pass'] = $("#old_pass").val();
+					params['customer_pass'] = $("#customer_pass").val();
+
+					$.ajax({
+						type : "POST",
+						url : url,
+						data : params,
+						success : function(data) {
+							// 戻り値の保存
+							console.log("customer_id: " + data.customer_id);
+							console.log("customer_pass: " + data.customer_pass);
+							// ファイル登録
+
+							//json
+							var datalist = ordering;
+							datalist['customer_pass'] = data.customer_pass;
+							datalist['customer_ans'] = $("#customer_ansT").val();
+
+							// ファイル登録
+							var fname = 'ordering';
+							setFile(fname, datalist, goSetting, goSetting);
+						},
+						error : function() {
+							networdERR(alertCallBack, '暗証番号を変更出来ませんでした');
+							return false;
+						}
+					});
+				} else {
+					message = '現在の暗証番号に誤りがあります。(' + pass + ')';
+					title = 'エラー';
+					button = 'OK';
+					navigator.notification.alert(message, alertCallBack(), title, button);
+				}
+
+			}
+
+			function goSetting() {
+				// 暗証番号をもとめるリミット
+				console.log("fname2: " + fname2);
+				var psstime = {};
+
+				// 暗証番号あり・なしフラグのセット
+				var passFlip = $('#passFlip').val();
+				if (passFlip == 'false') {
+					// 暗証番号確認なし：設定時間を未来にする
+					psstime['pass_time'] = parseInt(new Date(2035, 11, 31, 23, 59, 59) / 1000);
+				} else {
+					// 暗証番号確認あり：設定時間＝今　（設定時間の１時間後、暗証番号が確認されます）
+					psstime['pass_time'] = parseInt(new Date() / 1000);
+				}
+
+				var fname2 = 'passtime';
+				setFile(fname2, psstime, goHref, goHref);
+			}
+
+			function goHref() {
+				location.href = "setting.html";
+			}
+
+			// alertCallBack -----------------------------------------------------------------------
+			function alertCallBack() {
+				// location.href="passcode_edit.html";
+				location.reload(true);
+			}
+
+		</script>
+
+		<script type="text/javascript" charset="utf-8" src="js/jquery.mobile-1.2.0.min.js"></script>
+
+	</head>
+
+	<body>
+
+		<div data-role="page" data-add-back-btn="false" data-theme="z">
+			<div data-role="header" id="header" data-position="fixed">
+				<h1>暗証番号の変更</h1>
+				<a href="setting.html" class="ui-btn-left" data-icon="arrow-l" data-direction="reverse" data-ajax="false"> 戻る </a>
+			</div>
+			<!-- loading -->
+			<div class="loading" data-role="content" id="loading">
+				<div class="loading_box">
+					<p>
+						しばらくおまちください
+					</p>
+					<div id="loadingImg" class="square"></div>
+					<script>
+						$(function() {
+							$('#loadingImg').activity({
+								segments : 12,
+								width : 6,
+								space : 3,
+								length : 20,
+								color : '#FFFFFF',
+								speed : 1.5,
+								align : 'center',
+								valign : 'center'
+							});
+						});
+					</script>
+				</div>
+			</div>
+			<!-- content -->
+			<div id="content" class="cont_passcode_edit" data-role="content" style="display:none;">
+
+				<div class="page_description">
+					<div class="txt">
+						ExOrderで利用している暗証番号を変更します。
+					</div>
+				</div>
+				<div id="form_password">
+					<input type="hidden" id="customer_id" name="customer_id" value=""/>
+					<input type="hidden" id="customer_key" name="customer_key" value=""/>
+					<input type="hidden" id="customer_email_1" name="customer_email_1" value=""/>
+					<input type="hidden" id="iv" name="iv" value=""/>
+					<input type="hidden" id="customer_passT" name="customer_passT" value=""/>
+					<input type="hidden" id="customer_ansT" name="customer_ansT" value=""/>
+
+					<input type="hidden" id="app_ver" name="app_ver" value=""/>
+					<input type="hidden" id="app_code" name="app_code" value=""/>
+					<input type="hidden" id="url" name="url" value=""/>
+					<input type="hidden" id="http" name="http" value=""/>
+					<input type="hidden" id="https" name="https" value=""/>
+
+					<div data-role="fieldcontain" >
+						<ul class="setup_list" data-role="listview">
+							<li class="passcode">
+								<label for="old_pass" class="fieldLabel">現在の暗証番号<span class="form_note">(数字4～16桁)</span></label>
+								<input type="password" autocomplete="off" id="old_pass" name="old_pass" value="" class="required validate" maxlength=16 />
+							</li>
+
+							<li class="passcode">
+								<label for="customer_pass" class="fieldLabel">新しい暗証番号<span class="form_note">(数字4～16桁)</span></label>
+								<input type="password" autocomplete="off" id="customer_pass" name="customer_pass" class="required validate" value="" maxlength=16 placeholder="数字4～16桁" />
+							</li>
+							<li class="passcode">
+								<label for="re_pass" class="fieldLabel">確認のため、上と同じ値を再入力</label>
+								<input type="password" autocomplete="off" id="re_pass" name="re_pass" value="" class="required validate" maxlength=16 placeholder="上と同じ値を入力" />
+							</li>
+
+							<li class="pflip">
+								<label for="passFlip">購入時の暗証番号確認</label>
+								<select name="passFlip" id="passFlip" data-role="slider">
+									<option value="false">オフ</option>
+									<option value="true" selected="selected">オン</option>
+								</select>
+								<div class="txt" style="color: red;">
+									<br />
+									※ ご購入や設定変更の際に暗証番号を確認いたします。
+									(ご確認後１時間以上経つと、再確認が必要となります）
+									<br />
+									安全の為、上記はONにされることをおすすめ致します。
+								</div>
+							</li>
+
+							<li class="item_buy_1btn btn_txt_ow">
+								<div>
+									<a data-role="button" class="btn_next" onclick="checkValidate();">変更する</a>
+								</div>
+							</li>
+
+							<li class="report">
+								<div class="txt" style="color: red;">
+									暗証番号を忘れた方はコチラ
+								</div>
+								<div class="report_btn">
+									<a class="btn_prev" href="passcode_hint.html" data-role="button" data-ajax="false"> 暗証番号の再設定へ </a>
+								</div>
+							</li>
+
+						</ul>
+					</div>
+				</div>
+			</div>
+
+			<!-- nav -->
+			<div id="nav" class="footer" data-role="footer" data-id="tabber" data-position="fixed">
+				<ul>
+					<li class="tab01">
+						<a href="show_order.html" data-ajax="false"> <span>購入履歴</span> </a>
+					</li>
+					<li class="tab02">
+						<a href="barcode.html" data-ajax="false"> <span>読み取り</span> </a>
+					</li>
+					<li class="tab03 current">
+						<a href="setting.html" data-ajax="false"> <span>設定</span> </a>
+					</li>
+				</ul>
+				<!-- /dr-footer -->
+			</div>
+
+		</div>
+	</body>
+</html>
